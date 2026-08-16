@@ -17,10 +17,10 @@ const sessionSubscribers = excludeConnIds(
     sessionEventSubscribers.getAll(), runToolRecipients
 );
 if (sessionSubscribers.size > 0) broadcastToConnIds("session.tool", ...);
-// Deepclaw-ui was excluded → never received session.tool for tools
+// MiniClaw UI was excluded → never received session.tool for tools
 ```
 
-Deepclaw-ui received tool events via the `agent` event, but `convertToFrontendEvent()` only handled `session.tool` events. The `agent` event was treated as "internal plumbing" and silently dropped.
+MiniClaw UI received tool events via the `agent` event, but `convertToFrontendEvent()` only handled `session.tool` events. The `agent` event was treated as "internal plumbing" and silently dropped.
 
 ## Fix
 

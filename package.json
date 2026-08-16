@@ -1,6 +1,6 @@
 {
   "name": "miniclaw-ui",
-  "version": "1.0.0",
+  "version": "1.5.0",
   "description": "MiniClaw UI - A lightweight web interface for OpenClaw gateway traffic monitoring and session management",
   "main": "miniclaw-ui.js",
   "scripts": {

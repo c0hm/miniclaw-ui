@@ -89,7 +89,7 @@ const payload = [
       "token": "GW_TOKEN_VALUE"
     },
     "role": "operator",
-    "userAgent": "miniclaw-ui/1.0"
+    "userAgent": "miniclaw-ui/1.5"
   }
 }
 ```

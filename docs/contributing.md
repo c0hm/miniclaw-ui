@@ -1,10 +1,10 @@
 # Contributing to MiniClaw UI
 
-## Start Here: `AGENTS.MD`
+## Start Here: `AGENTS.md`
 
-**Before you write a single line of code, read `AGENTS.MD` in the project root.** It's the developer bootstrap — architecture diagrams, source layout by line number, event flow, dedup behavior, session lifecycle, edge cases, and gotchas. It turns any coder (human or agent) into a productive MiniClaw UI developer in one read.
+**Before you write a single line of code, read `AGENTS.md` in the project root.** It's the developer bootstrap — architecture diagrams, source layout by line number, event flow, dedup behavior, session lifecycle, edge cases, and gotchas. It turns any coder (human or agent) into a productive MiniClaw UI developer in one read.
 
-This document covers how to contribute. `AGENTS.MD` covers how the code works.
+This document covers how to contribute. `AGENTS.md` covers how the code works.
 
 ## Task Workflow
 
@@ -66,7 +66,7 @@ When testing:
 - [ ] Task doc in `docs/tasks/` is complete and linked from `docs/tasks/index.md`
 - [ ] Manual smoke test: start server, load UI, trigger affected flows
 - [ ] No new dependencies added without explicit justification
-- [ ] Edge cases from `AGENTS.MD` §6 considered (dedup, session lifecycle, event conversion gotchas)
+- [ ] Edge cases from `AGENTS.md` §6 considered (dedup, session lifecycle, event conversion gotchas)
 
 ## Reporting Issues
 
@@ -91,4 +91,4 @@ Include:
 
 ---
 
-*Thank you for contributing. Start with `AGENTS.MD` — it has everything you need.*
+*Thank you for contributing. Start with `AGENTS.md` — it has everything you need.*

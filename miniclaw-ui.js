@@ -352,14 +352,26 @@ body{background:#1e1e2e;color:#cdd6f4;font-family:'SF Mono','Fira Code',monospac
 </body></html>`;
   }
 
-  // Markdown - render with marked.js
+  // Markdown - render with marked.js + edit/save toggle
   if (type.kind === 'markdown') {
+    const encodedPath = JSON.stringify(filePath);
     return headerHtml + `</head><body>
-<div id="bar"><span class="name">📝 ${encodedTitle}</span><span class="spacer"></span><span style="font-size:10px;color:#585b70">Markdown</span><button class="dl" onclick="downloadFile()">⬇ Download</button><button class="close" onclick="window.close()">✕</button></div>
-<div id="main"><div id="md-view"></div></div>
+<div id="bar"><span class="name">📝 ${encodedTitle}</span><span class="spacer"></span><span id="mode-badge" style="font-size:10px;color:#585b70">Markdown</span><button id="btn-edit" class="dl" onclick="toggleEdit()" style="background:#f9e2af;color:#1e1e2e">✏️ Edit</button><button class="dl" onclick="downloadFile()">⬇ Download</button><button class="close" onclick="window.close()">✕</button></div>
+<div id="main"><div id="md-view"></div><textarea id="md-editor" style="display:none"></textarea></div>
+<style>
+#md-editor{position:absolute;inset:0;background:#11111b;color:#cdd6f4;border:none;padding:24px 32px;font-family:'SF Mono','Fira Code',monospace;font-size:13px;line-height:1.7;resize:none;outline:none;tab-size:2}
+#btn-edit.danger{background:#f38ba8}
+#btn-edit.saving{background:#a6e3a1;opacity:0.5;pointer-events:none}
+</style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></` + `script>
-<script>document.getElementById('md-view').innerHTML=marked.parse(${encodedContent})</` + `script>
-<script>window.__FC__=${encodedContent};window.__FN__=${JSON.stringify(title)};function downloadFile(){var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([window.__FC__],{type:'application/octet-stream'}));a.download=window.__FN__;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(a.href)}</` + `script>
+<script>
+window.__FP__=${encodedPath};window.__FC__=${encodedContent};window.__FN__=${JSON.stringify(title)};
+var _editing=false;
+function downloadFile(){var c=_editing?document.getElementById('md-editor').value:window.__FC__;var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{type:'application/octet-stream'}));a.download=window.__FN__;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(a.href)}
+function toggleEdit(){var md=document.getElementById('md-view');var ed=document.getElementById('md-editor');var btn=document.getElementById('btn-edit');var badge=document.getElementById('mode-badge');if(!_editing){ed.value=window.__FC__;md.style.display='none';ed.style.display='';btn.textContent='💾 Save';btn.classList.add('danger');badge.textContent='Editing';_editing=true}else{var content=ed.value;btn.textContent='Saving...';btn.classList.add('saving');btn.classList.remove('danger');fetch('/api/files/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filePath:window.__FP__,content:content})}).then(function(r){if(!r.ok)return r.json().then(function(e){throw new Error(e.error)});return r.json()}).then(function(){window.__FC__=content;md.innerHTML=marked.parse(content);md.style.display='';ed.style.display='none';btn.textContent='✏️ Edit';btn.classList.remove('saving','danger');badge.textContent='Markdown';_editing=false}).catch(function(err){alert('Save failed: '+err.message);btn.textContent='💾 Save';btn.classList.remove('saving');btn.classList.add('danger')})}}
+document.getElementById('md-view').innerHTML=marked.parse(window.__FC__);
+document.getElementById('md-editor').addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();toggleEdit()}if(e.key==='Escape'&&_editing){e.preventDefault();var md=document.getElementById('md-view');var ed=document.getElementById('md-editor');var btn=document.getElementById('btn-edit');var badge=document.getElementById('mode-badge');md.style.display='';ed.style.display='none';btn.textContent='✏️ Edit';btn.classList.remove('danger','saving');badge.textContent='Markdown';_editing=false}});
+</` + `script>
 </body></html>`;
   }
 
@@ -1622,6 +1634,71 @@ function handleRequest(req, res) {
     return;
   }
 
+  // Save edited file content (markdown editor)
+  if (parsedUrl.pathname === '/api/files/save' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const { filePath, content } = JSON.parse(body);
+        if (!filePath || content === undefined || content === null) {
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ error: 'filePath and content are required' }));
+          return;
+        }
+
+        const resolved = path.resolve(filePath);
+        const allowed = FILE_SHARE_ALLOWED_PREFIXES.some(prefix => resolved.startsWith(prefix));
+        if (!allowed) {
+          log('warn', `File save rejected (path not allowed): ${resolved}`);
+          res.writeHead(403, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ error: `File path not allowed: ${resolved}` }));
+          return;
+        }
+
+        if (!fs.existsSync(resolved)) {
+          res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ error: 'File not found' }));
+          return;
+        }
+
+        try {
+          if (!fs.statSync(resolved).isFile()) {
+            res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify({ error: 'Path is not a regular file' }));
+            return;
+          }
+        } catch (statErr) {
+          res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ error: 'Cannot stat file: ' + statErr.message }));
+          return;
+        }
+
+        const MAX_SAVE_SIZE = 2 * 1024 * 1024;
+        const contentBytes = Buffer.byteLength(content, 'utf8');
+        if (contentBytes > MAX_SAVE_SIZE) {
+          res.writeHead(413, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ error: 'Content exceeds 2MB limit' }));
+          return;
+        }
+
+        const tempPath = resolved + '.tmp.' + crypto.randomUUID();
+        fs.writeFileSync(tempPath, content, 'utf8');
+        fs.renameSync(tempPath, resolved);
+
+        log('info', `File saved via editor: ${resolved} (${contentBytes} bytes)`);
+
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ saved: true, path: resolved, size: contentBytes }));
+      } catch (e) {
+        log('error', `File save failed: ${e.message}`);
+        res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
   if (parsedUrl.pathname === '/api/status') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({
@@ -1922,7 +1999,7 @@ function handleGatewayMessage(msg) {
       caps: ['tool-events', 'llm-events'],
       auth: { token: GW_TOKEN },
       role: 'operator',
-      userAgent: 'miniclaw-ui/1.0'
+      userAgent: 'miniclaw-ui/1.5'
     };
 
     if (deviceIdentity) {
@@ -2340,7 +2417,7 @@ process.stdin.on('data', (line) => {
   const cmd = line.trim().toLowerCase();
 
   if (cmd === 'status') {
-    console.log('\n=== MiniClaw UI v2 Status ===');
+    console.log('\n=== MiniClaw UI Status ===');
     console.log('Gateway:', gwReady ? 'connected' : 'disconnected');
     console.log('Sessions:', sessions.size);
     console.log('Browser clients:', clients.size);
@@ -2380,7 +2457,7 @@ server.listen(PORT, '0.0.0.0', () => {
              require('os').networkInterfaces()['wlan0']?.[0]?.address ||
              'localhost';
   const protocol = certs ? 'https' : 'http';
-  log('info', `MiniClaw UI v2 running at ${protocol}://0.0.0.0:${PORT}/`);
+  log('info', `MiniClaw UI running at ${protocol}://0.0.0.0:${PORT}/`);
   log('info', `Access from LAN: ${protocol}://${ip}:${PORT}/`);
   log('info', `Data directory: ${DATA_DIR}`);
   log('info', 'Commands: status | sessions | events | gc | reset | help');

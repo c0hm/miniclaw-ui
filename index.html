@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#0f1117">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f1117'/%3E%3Cpath d='M16 28 C8 20,6 10,10 5' fill='none' stroke='%236366f1' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='M16 28 C24 20,26 10,22 5' fill='none' stroke='%236366f1' stroke-width='2.5' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='26' r='2.5' fill='%236366f1'/%3E%3C/svg%3E">
-<title>MiniClaw UI v1.1</title>
+<title>MiniClaw UI v1.5</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -93,7 +93,8 @@
   #stats-line .stat-value.assistant { color: var(--assistant); }
   #chat-input-container { padding: 8px 16px; border-top: 1px solid var(--border); display: flex; gap: 8px; background: var(--panel); height: 80px; flex-shrink: 0; position: relative; transition: height 0.2s ease, padding 0.2s ease, opacity 0.15s ease; }
   #chat-input-container.hidden { display: none; }
-  #chat-input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 8px 10px; border-radius: 4px; font-family: inherit; font-size: 12px; min-height: 60px; resize: vertical; max-height: 500px; line-height: 1.5; }
+  #chat-input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 8px 10px; border-radius: 4px; font-family: inherit; font-size: 12px; min-height: 60px; resize: none; line-height: 1.5; }
+  #chat-input-container.resizing { transition: none !important; }
   .input-actions { display: flex; flex-direction: column; gap: 2px; align-items: center; }
   #close-input-btn { padding: 2px 6px; border-radius: 3px; font-size: 12px; cursor: pointer; background: transparent; border: 1px solid transparent; color: var(--muted); }
   #close-input-btn:hover { background: var(--border); color: var(--text); }
@@ -101,9 +102,10 @@
   #new-msg-btn:hover { background: #5255d4; }
   #prev-msg-btn { display: none; position: absolute; left: 50%; transform: translateX(-50%); background: var(--accent); color: #000; border: none; border-radius: 16px; padding: 6px 14px; font-size: 11px; font-weight: 600; cursor: pointer; box-shadow: 0 2px 8px rgba(99,102,241,0.4); z-index: 10; opacity: 0.5; }
   #prev-msg-btn:hover { background: #5255d4; }
-  #resize-handle { height: 6px; background: var(--border); cursor: ns-resize; flex-shrink: 0; position: relative; }
+  #resize-handle { height: 6px; background: var(--border); cursor: ns-resize; flex-shrink: 0; position: relative; touch-action: none; }
+  #resize-handle::before { content: ''; position: absolute; inset: -14px 0; z-index: 0; }
   #resize-handle.hidden { display: none; }
-  #resize-handle::after { content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 40px; height: 3px; background: var(--muted); border-radius: 2px; opacity: 0.5; }
+  #resize-handle::after { content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 40px; height: 3px; background: var(--muted); border-radius: 2px; opacity: 0.5; z-index: 1; }
   #resize-handle:hover { background: var(--accent); }
   #resize-handle:hover::after { background: #000; opacity: 1; }
   #chat-input:focus { outline: none; border-color: var(--accent); }
@@ -583,6 +585,15 @@ loadPrefs();
     document.querySelectorAll('.filter-btn[data-filter]').forEach(b => b.classList.remove('active'));
     activeBtn.classList.add('active');
   }
+  // restore chat input height
+  try {
+    var savedH = localStorage.getItem('miniclaw-ui-input-height');
+    if (savedH) {
+      var cc = document.getElementById('chat-input-container');
+      cc.style.height = savedH;
+      cc.style.flex = 'none';
+    }
+  } catch { /* ignore */ }
 })();
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -5262,34 +5273,57 @@ msgsEl.addEventListener('scroll', () => {
   }
 });
 
-// Resize handle drag
+// Resize handle drag (mouse + touch)
 const resizeHandle = document.getElementById('resize-handle');
+const chatContainer = document.getElementById('chat-input-container');
 let isResizing = false;
 let startY = 0;
 let startHeight = 0;
-resizeHandle.addEventListener('mousedown', (e) => {
+
+function beginResize(clientY) {
+  if (isResizing) return;
   isResizing = true;
-  startY = e.clientY;
-  const chatContainer = document.getElementById('chat-input-container');
+  startY = clientY;
   startHeight = chatContainer.offsetHeight;
+  chatContainer.classList.add('resizing');
   document.body.style.cursor = 'ns-resize';
   document.body.style.userSelect = 'none';
-});
-document.addEventListener('mousemove', (e) => {
+}
+
+function duringResize(clientY) {
   if (!isResizing) return;
-  const dy = (e.clientY - startY);
-  const chatContainer = document.getElementById('chat-input-container');
+  const dy = (clientY - startY);
   const newHeight = Math.max(60, Math.min(500, startHeight - dy));
   chatContainer.style.height = newHeight + 'px';
   chatContainer.style.flex = 'none';
-});
-document.addEventListener('mouseup', () => {
-  if (isResizing) {
-    isResizing = false;
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-  }
-});
+}
+
+function endResize() {
+  if (!isResizing) return;
+  isResizing = false;
+  chatContainer.classList.remove('resizing');
+  document.body.style.cursor = '';
+  document.body.style.userSelect = '';
+  // Persist height
+  try {
+    localStorage.setItem('miniclaw-ui-input-height', chatContainer.style.height);
+  } catch { /* ignore */ }
+}
+
+resizeHandle.addEventListener('mousedown', (e) => beginResize(e.clientY));
+resizeHandle.addEventListener('touchstart', (e) => {
+  beginResize(e.touches[0].clientY);
+}, { passive: true });
+
+document.addEventListener('mousemove', (e) => duringResize(e.clientY));
+document.addEventListener('touchmove', (e) => {
+  if (isResizing) e.preventDefault();
+  duringResize(e.touches[0].clientY);
+}, { passive: false });
+
+document.addEventListener('mouseup', endResize);
+document.addEventListener('touchend', endResize);
+document.addEventListener('touchcancel', endResize);
 
 // Global keyboard shortcuts
 document.addEventListener('keydown', function(e) {

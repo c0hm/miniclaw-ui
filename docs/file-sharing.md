@@ -1,4 +1,5 @@
-# File Sharing
+# File Sharing 
+# This is a new line added in testing.
 
 ## Overview
 
@@ -84,6 +85,33 @@ Returns file as download:
 
 Returns a full HTML page with inline preview. Token consumed immediately.
 
+### POST /api/files/save
+
+**Request:**
+```json
+{ "filePath": "/home/ju/some/file.md", "content": "# Edited content" }
+```
+
+**Success response (200):**
+```json
+{ "saved": true, "path": "/home/ju/some/file.md", "size": 15 }
+```
+
+Writes edited content back to disk. Used by the markdown viewer's edit/save toggle.
+
+**Security:**
+- Requires Basic Auth (same-origin passthrough from viewer page)
+- Re-validates `filePath` against `FILE_SHARE_ALLOWED_PREFIXES`
+- Only allows editing existing files (404 if file doesn't exist)
+- Max content size: 2MB (413 if exceeded)
+- Atomic write: temp file → rename to prevent partial/corrupt saves
+
+**Error responses:**
+- `400` — missing `filePath` or `content`, or path is not a regular file
+- `403` — path not in allowed prefixes
+- `404` — file not found
+- `413` — content exceeds 2MB limit
+
 ## File Type Detection
 
 `detectFileType(filePath)` determines display mode:
@@ -150,6 +178,10 @@ Code files display:
 
 Files with `.md`/`.markdown` extension render using `marked.js` v12.0.0 from CDN. Dark-themed CSS with Catppuccin Mocha colors:
 - Header bar: filename, syntax badge, Download + Close buttons (client-side Blob download)
+- Includes "✏️ Edit" button that switches to a raw `<textarea>` editor
+- **Save:** POSTs content to `/api/files/save` with atomic write; saves via same-origin Basic Auth passthrough
+- **Keyboard shortcuts:** `Ctrl+S`/`Cmd+S` (save), `Escape` (cancel)
+- **Download:** In edit mode, downloads current editor content (not original)
 - Headers in `#89b4fa`, code blocks in `#11111b`, inline code in `#f5c2e7`
 - Tables, blockquotes, lists fully styled
 - Max-width 900px centered layout
@@ -163,11 +195,12 @@ Binary files (detected via null-byte check) show a "Binary file — cannot previ
 `generateViewerPage(filePath, content, title)` produces a complete standalone HTML document. Uses:
 - Catppuccin Mocha color scheme (`#1e1e2e` background, `#cdd6f4` text)
 - `SF Mono` / `Fira Code` monospace font stack
-- Escape-safe content embedding (prevents `</script>` tags from breaking the page)
+- Escape-safe content embedding (prevents `<\/script>` tags from breaking the page)
 - Responsive layout with fixed header bar + scrollable content area
 
 ## Related
 
 - [index.md](index.md) — Architecture overview
 - [http-api.md](http-api.md) — REST API endpoints
+- [markdown-editor.md](markdown-editor.md) — Markdown editor feature details
 - [configuration.md](configuration.md) — Environment variables

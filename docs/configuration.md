@@ -142,7 +142,7 @@ Check current configuration via the CLI:
 
 ```
 > status
-=== MiniClaw UI v2 Status ===
+=== MiniClaw UI Status ===
 Gateway: connected
 Sessions: 3
 Browser clients: 2

@@ -345,5 +345,6 @@ help       → show commands
 - [configuration.md](configuration.md) — Env vars reference
 - [troubleshooting.md](troubleshooting.md) — Issue guide
 - [file-sharing.md](file-sharing.md) — One-shot file share + viewer
+- [markdown-editor.md](markdown-editor.md) — In-browser markdown editor with save-to-host
 - [glossary.md](glossary.md) — Domain terms
 - [contributing.md](contributing.md) — Contribution guidelines

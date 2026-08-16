@@ -4,6 +4,10 @@ This file tracks all tasks, features, and changes made to the MiniClaw UI projec
 
 ## Active Tasks
 
+- **[rename-clawpro-to-miniclaw](rename-clawpro-to-miniclaw.md)** (2026-08-16) — ✅ Completed. Rename entire project back from "Clawpro 1.2" to "MiniClaw UI v1.5" (version bump 1.2 → 1.5): binary `miniclaw-ui.js`, source, package files, scripts, systemd service, all docs, workspace files.
+
+- **[rename-miniclaw-to-clawpro](rename-miniclaw-to-clawpro.md)** (2026-07-14) — ✅ Completed. Rename entire project from "MiniClaw UI" to "Clawpro 1.2": binary, source, package files, scripts, systemd service, all docs, workspace files.
+
 - **[improve-tool-result-rendering](improve-tool-result-rendering.md)** (2026-06-02) — ✅ Completed. **memory_search header shows query + web_fetch gets dedicated renderer.** (A) `renderMemorySearchHeader` now looks up matching `tool_start` to extract query, shows `🔍 "query" · N results` instead of just `🔍 N results`. (B) New `renderWebFetchHeader` replaces generic fallback: header shows HTTP status badge, shortened clickable URL, duration, content size; expanded body uses `renderUdiffContent()` (same as read/write).
 
 - **[prev-messages-scroll-button](prev-messages-scroll-button.md)** (2026-06-02) — ✅ Completed. Added "↑ N previous messages" button at top of messages panel, mirroring the existing "↓ N new messages" button. New `userScrolledDown` state, `scrollToTop()`, `updatePrevMsgButton()`, `countMessagesAbove()` functions.
@@ -16,6 +20,8 @@ This file tracks all tasks, features, and changes made to the MiniClaw UI projec
 - **[fix-session-sync-race-condition](fix-session-sync-race-condition.md)** (2026-06-02) — Fresh load during streaming events doesn't load correctly. Analysis complete: `session.sync` silently dropped due to `key` vs `sessionKey` mismatch, but fixing it causes massive payload freeze (3×2000 events). Needs hybrid approach: sync only last 100 events + REST fallback for full history.
 
 ## Completed Tasks
+
+- **[markdown-editor-in-file-viewer](markdown-editor-in-file-viewer.md)** (2026-07-05) — ✅ Completed. **In-browser markdown editor with save-to-host.** Adds "✏️ Edit" button to markdown file viewer page that switches from rendered preview to raw-text `<textarea>`, allowing in-browser editing. "💾 Save" button POSTs content to new `/api/files/save` endpoint which validates path against allowed prefixes and writes atomically. Same-origin Basic Auth passthrough avoids separate token system. Includes Escape-to-cancel, Ctrl+S shortcut, and Download-in-edit-mode support.
 
 - **[remember-scroll-position-on-session-switch](remember-scroll-position-on-session-switch.md)** (2026-06-02) — ✅ Session switch remembers scroll position. `showSession()` saves outgoing `_scrollTop`, scroll handler updates it in real time, `showSessionContent()` restores on `prevCount===0` (session switch), `clearSessionEvents()` resets it.
 
