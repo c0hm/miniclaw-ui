@@ -44,6 +44,16 @@
   #session-list { flex: 1; overflow-y: auto; }
   #session-list::-webkit-scrollbar { width: 4px; }
   #session-list::-webkit-scrollbar-thumb { background: var(--border); }
+  #session-filter-bar { padding: 6px 10px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+  #session-filter-bar select, #session-filter-bar input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 4px 8px; border-radius: 4px; font-family: inherit; font-size: 10px; }
+  #session-filter-bar select:focus, #session-filter-bar input:focus { outline: none; border-color: var(--accent); }
+  #session-filter-bar .sf-kinds { display: flex; gap: 4px; }
+  #session-filter-bar .skind-chip { flex: 1; padding: 3px 0; border-radius: 4px; font-size: 9px; cursor: pointer; background: var(--bg); border: 1px solid var(--border); color: var(--muted); text-align: center; }
+  #session-filter-bar .skind-chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #session-filter-bar .skind-chip.off { opacity: 0.45; text-decoration: line-through; }
+  #session-filter-bar .sf-footer { display: flex; align-items: center; justify-content: space-between; font-size: 9px; color: var(--muted); }
+  #session-filter-clear { background: transparent; border: none; color: var(--accent); cursor: pointer; font-size: 9px; padding: 0; }
+  .session-item .pin-badge { font-size: 8px; color: var(--accent); background: rgba(99,102,241,0.15); padding: 1px 5px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; }
   .session-item { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border); transition: background 0.1s; display: flex; flex-direction: column; gap: 3px; }
   .session-item:hover { background: #1e2130; }
   .session-item.active { background: #1e1f2e; border-left: 3px solid var(--accent); }
@@ -367,6 +377,21 @@
         <button id="delete-session-btn" onclick="deleteActiveSession()" title="Delete current session" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:4px;display:none;">🗑</button>
       </div>
     </div>
+    <div id="session-filter-bar">
+      <select id="session-agent-filter" title="Filter by agent">
+        <option value="">All agents</option>
+      </select>
+      <div class="sf-kinds">
+        <button type="button" id="kind-toggle-session" class="skind-chip active" title="Show/hide named sessions">Named</button>
+        <button type="button" id="kind-toggle-subagent" class="skind-chip active" title="Show/hide subagent sessions">Subagent</button>
+        <button type="button" id="kind-toggle-cron" class="skind-chip active" title="Show/hide cron sessions">Cron</button>
+      </div>
+      <input type="text" id="session-filter-text" placeholder="Filter…" autocomplete="off" spellcheck="false">
+      <div class="sf-footer">
+        <span id="session-filter-count">0</span>
+        <button type="button" id="session-filter-clear" onclick="resetSessionFilter()" style="display:none;">✕ Clear</button>
+      </div>
+    </div>
     <div id="session-list">
       <div style="padding:20px;text-align:center;color:var(--muted);font-size:11px;line-height:1.6;">
         Waiting for sessions...<br>
@@ -635,6 +660,125 @@ function getAgentName(sk) {
   // Handle "name:instance" or other formats — use first segment as fallback
   return parts[0];
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Section 2c: Session List Filters (agent / kind / text)
+   ────────────────────────────────────────────────────────────────────────── */
+const _SESSION_FILTER_KEY = 'miniclaw-ui-session-filter';
+
+/** Parse "agent:<name>:<kind>[:<uuid>]" into structured parts. */
+function parseSessionKey(sk) {
+  if (!sk || typeof sk !== 'string') return { agent: null, kind: 'session', name: null };
+  const parts = sk.split(':');
+  const agent = parts.length > 1 && parts[0] === 'agent' ? parts[1] : (parts[0] || null);
+  const third = parts[2];
+  if (third === 'subagent' || third === 'cron') {
+    return { agent, kind: third, name: parts[3] || null };
+  }
+  // Named session (or legacy dash / 2-segment key) → kind 'session'
+  return { agent, kind: 'session', name: third || null };
+}
+
+let sessionFilter = {
+  agents: [],            // empty = all agents; otherwise whitelist of agent names
+  kinds: { session: true, subagent: true, cron: true },
+  text: ''
+};
+
+function saveSessionFilter() {
+  try {
+    localStorage.setItem(_SESSION_FILTER_KEY, JSON.stringify({
+      agents: sessionFilter.agents,
+      kinds: sessionFilter.kinds,
+      text: sessionFilter.text
+    }));
+  } catch { /* quota or disabled */ }
+}
+
+function loadSessionFilter() {
+  try {
+    const raw = localStorage.getItem(_SESSION_FILTER_KEY);
+    if (!raw) return;
+    const p = JSON.parse(raw);
+    if (Array.isArray(p.agents)) sessionFilter.agents = p.agents;
+    if (p.kinds && typeof p.kinds === 'object') {
+      ['session', 'subagent', 'cron'].forEach(k => {
+        if (typeof p.kinds[k] === 'boolean') sessionFilter.kinds[k] = p.kinds[k];
+      });
+    }
+    if (typeof p.text === 'string') sessionFilter.text = p.text;
+  } catch { /* corrupt, ignore */ }
+}
+
+function sessionMatchesFilter(sk) {
+  const { agent, kind, name } = parseSessionKey(sk);
+  if (!sessionFilter.kinds[kind]) return false;
+  if (sessionFilter.agents.length > 0 && !sessionFilter.agents.includes(agent)) return false;
+  if (sessionFilter.text) {
+    const hay = (agent + ' ' + (name || '') + ' ' + sk).toLowerCase();
+    if (!hay.includes(sessionFilter.text.toLowerCase())) return false;
+  }
+  return true;
+}
+
+function isSessionFilterActive() {
+  return sessionFilter.agents.length > 0 ||
+    !sessionFilter.kinds.session ||
+    !sessionFilter.kinds.subagent ||
+    !sessionFilter.kinds.cron ||
+    sessionFilter.text !== '';
+}
+
+function resetSessionFilter() {
+  sessionFilter = { agents: [], kinds: { session: true, subagent: true, cron: true }, text: '' };
+  saveSessionFilter();
+  const txt = document.getElementById('session-filter-text');
+  if (txt) txt.value = '';
+  refreshSessionList();
+}
+
+/** Sync filter bar controls (agent options, chips, text, clear) with state. */
+function refreshSessionFilterBar() {
+  const sel = document.getElementById('session-agent-filter');
+  if (sel) {
+    const current = sessionFilter.agents[0] || '';
+    const agents = new Set();
+    for (const sk of sessions.keys()) {
+      const a = parseSessionKey(sk).agent;
+      if (a) agents.add(a);
+    }
+    const sortedAgents = [...agents].sort();
+    let html = '<option value="">All agents</option>';
+    for (const a of sortedAgents) {
+      html += '<option value="' + escAttr(a) + '"' + (a === current ? ' selected' : '') + '>' + escHtml(a) + '</option>';
+    }
+    sel.innerHTML = html;
+    // Prune stale selection (agent no longer has any sessions)
+    if (current && !sortedAgents.includes(current)) {
+      sessionFilter.agents = [];
+      saveSessionFilter();
+    }
+  }
+
+  for (const k of ['session', 'subagent', 'cron']) {
+    const chip = document.getElementById('kind-toggle-' + k);
+    if (chip) {
+      const on = sessionFilter.kinds[k];
+      chip.classList.toggle('active', on);
+      chip.classList.toggle('off', !on);
+    }
+  }
+
+  const txt = document.getElementById('session-filter-text');
+  if (txt && document.activeElement !== txt && txt.value !== sessionFilter.text) {
+    txt.value = sessionFilter.text;
+  }
+
+  const clearBtn = document.getElementById('session-filter-clear');
+  if (clearBtn) clearBtn.style.display = isSessionFilterActive() ? 'inline-block' : 'none';
+}
+
+loadSessionFilter();
 
 /** Get or generate the accent hue for an agent — greedy: pick the most isolated spot on the wheel */
 function getOrCreateAgentTheme(agentName) {
@@ -1595,51 +1739,81 @@ function updateUI(forceList, forceContent) {
   }
 }
 
+function renderSessionItem(sk, sess, isPinned) {
+  const tc = sess.events.filter(e => e.type === 'tool_start').length;
+  const ec = sess.events.filter(e => e.type === 'run_error').length;
+  const llm = sess.events.filter(e => e.type === 'run_start').length;
+  const time = sess.lastTs.toLocaleTimeString();
+  const isActive = sk === activeSession;
+  const shortSk = sk.length > 45 ? sk.slice(0, 42) + '...' : sk;
+
+  const div = document.createElement('div');
+  div.className = 'session-item' + (isActive ? ' active' : '') + (sess._optimistic ? ' optimistic' : '') + (sess._failed ? ' failed' : '') + (isPinned ? ' pinned' : '');
+  div.dataset.sk = sk;
+  if (!sess._optimistic) {
+    div.onclick = () => showSession(sk);
+  } else {
+    div.title = 'Session still being created...';
+  }
+  div.innerHTML =
+    '<div class="sk">' +
+      '<span class="sk-text">' + escHtml(shortSk) + '</span>' +
+      (isPinned ? '<span class="pin-badge" title="Hidden by filter — pinned so you keep context">hidden by filter</span>' : '') +
+      (isActive ? '<button class="delete-btn" onclick="event.stopPropagation(); deleteSessionFromList(\'' + escAttr(sk) + '\')" title="Delete session">🗑</button>' : '') +
+    '</div>' +
+    '<div class="meta">' +
+      (llm > 0 ? '<span style="color:var(--assistant)">' + llm + ' LLM</span>' : '') +
+      (tc > 0 ? '<span style="color:var(--tool)">' + tc + ' tools</span>' : '') +
+      (sess.totalTokens > 0 ? '<span style="color:var(--accent)">' + sess.totalTokens.toLocaleString() + ' tok</span>' : '') +
+      (ec > 0 ? '<span style="color:var(--error)">' + ec + ' err</span>' : '') +
+      '<span class="time">' + time + '</span>' +
+    '</div>';
+  return div;
+}
+
 function refreshSessionList() {
   const list = document.getElementById('session-list');
-  const sorted = [...sessions.entries()].sort((a, b) => b[1].lastTs - a[1].lastTs);
 
-  if (sorted.length === 0) {
-    const newBtnDisabled = _newSessionPending ? ' disabled style="opacity:0.5;cursor:default"' : '';
-    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:11px;line-height:1.6;">' +
-      'Waiting for sessions...<br>Traffic will appear here in real-time.<br><br>' +
-      '<button id="empty-new-session-btn" onclick="sendNewSession()"' + newBtnDisabled + ' style="padding:4px 10px;border-radius:4px;font-size:10px;cursor:pointer;background:var(--user);color:#000;border:none;">🆕 New Session</button>' +
-      '</div>';
+  // Sync filter bar controls (agent options, chips, text, clear visibility)
+  refreshSessionFilterBar();
+
+  const total = sessions.size;
+  const entries = [...sessions.entries()].filter(([sk]) => sessionMatchesFilter(sk));
+
+  // Pin the active session if a filter would otherwise hide it
+  const pinned = [];
+  if (activeSession && sessions.has(activeSession) && !entries.some(([sk]) => sk === activeSession)) {
+    pinned.push([activeSession, sessions.get(activeSession)]);
+  }
+
+  const sorted = entries.sort((a, b) => b[1].lastTs - a[1].lastTs);
+  const visible = sorted.length + pinned.length;
+
+  const countEl = document.getElementById('session-filter-count');
+  if (countEl) {
+    countEl.textContent = isSessionFilterActive() ? visible + ' / ' + total : String(total);
+  }
+
+  if (visible === 0) {
+    if (total === 0) {
+      const newBtnDisabled = _newSessionPending ? ' disabled style="opacity:0.5;cursor:default"' : '';
+      list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:11px;line-height:1.6;">' +
+        'Waiting for sessions...<br>Traffic will appear here in real-time.<br><br>' +
+        '<button id="empty-new-session-btn" onclick="sendNewSession()"' + newBtnDisabled + ' style="padding:4px 10px;border-radius:4px;font-size:10px;cursor:pointer;background:var(--user);color:#000;border:none;">🆕 New Session</button>' +
+        '</div>';
+    } else {
+      list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:11px;line-height:1.6;">' +
+        'No sessions match filters.' +
+        '<br><br>' +
+        '<button onclick="resetSessionFilter()" style="padding:4px 10px;border-radius:4px;font-size:10px;cursor:pointer;background:var(--bg);border:1px solid var(--border);color:var(--text);">✕ Clear filters</button>' +
+        '</div>';
+    }
     return;
   }
 
   const frag = document.createDocumentFragment();
-  sorted.forEach(([sk, sess]) => {
-    const tc = sess.events.filter(e => e.type === 'tool_start').length;
-    const ec = sess.events.filter(e => e.type === 'run_error').length;
-    const llm = sess.events.filter(e => e.type === 'run_start').length;
-    const time = sess.lastTs.toLocaleTimeString();
-    const active = sk === activeSession ? ' active' : '';
-    const shortSk = sk.length > 45 ? sk.slice(0, 42) + '...' : sk;
-    const isActive = sk === activeSession;
-
-    const div = document.createElement('div');
-    div.className = 'session-item' + active + (sess._optimistic ? ' optimistic' : '') + (sess._failed ? ' failed' : '');
-    div.dataset.sk = sk;
-    if (!sess._optimistic) {
-      div.onclick = () => showSession(sk);
-    } else {
-      div.title = 'Session still being created...';
-    }
-    div.innerHTML =
-      '<div class="sk">' +
-        '<span class="sk-text">' + escHtml(shortSk) + '</span>' +
-        (isActive ? '<button class="delete-btn" onclick="event.stopPropagation(); deleteSessionFromList(\'' + escAttr(sk) + '\')" title="Delete session">🗑</button>' : '') +
-      '</div>' +
-      '<div class="meta">' +
-        (llm > 0 ? '<span style="color:var(--assistant)">' + llm + ' LLM</span>' : '') +
-        (tc > 0 ? '<span style="color:var(--tool)">' + tc + ' tools</span>' : '') +
-        (sess.totalTokens > 0 ? '<span style="color:var(--accent)">' + sess.totalTokens.toLocaleString() + ' tok</span>' : '') +
-        (ec > 0 ? '<span style="color:var(--error)">' + ec + ' err</span>' : '') +
-        '<span class="time">' + time + '</span>' +
-      '</div>';
-    frag.appendChild(div);
-  });
+  pinned.forEach(([sk, sess]) => frag.appendChild(renderSessionItem(sk, sess, true)));
+  sorted.forEach(([sk, sess]) => frag.appendChild(renderSessionItem(sk, sess, false)));
 
   list.innerHTML = '';
   list.appendChild(frag);
@@ -5224,6 +5398,36 @@ document.getElementById('filter-text').oninput = (e) => {
   filterText = e.target.value;
   scheduleUIUpdate(false, true);
 };
+
+// Session list filter bar (sidebar)
+const sessionFilterTextEl = document.getElementById('session-filter-text');
+let _sfDebounceId = null;
+sessionFilterTextEl.oninput = (e) => {
+  sessionFilter.text = e.target.value;
+  clearTimeout(_sfDebounceId);
+  _sfDebounceId = setTimeout(() => {
+    saveSessionFilter();
+    refreshSessionList();
+  }, 150);
+};
+
+document.getElementById('session-agent-filter').onchange = (e) => {
+  const v = e.target.value;
+  sessionFilter.agents = v ? [v] : [];
+  saveSessionFilter();
+  refreshSessionList();
+};
+
+['session', 'subagent', 'cron'].forEach((kind) => {
+  document.getElementById('kind-toggle-' + kind).onclick = () => {
+    sessionFilter.kinds[kind] = !sessionFilter.kinds[kind];
+    saveSessionFilter();
+    refreshSessionList();
+  };
+});
+
+// Sync filter bar on initial load (restore persisted state even with 0 sessions)
+refreshSessionFilterBar();
 
 // Messages panel scroll tracking
 const msgsEl = document.getElementById('messages');
